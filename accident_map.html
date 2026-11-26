@@ -839,11 +839,16 @@
   let displayMode = 'cluster'; // 'cluster' | 'pins' | 'heat'
 
   // --- Map Initialization ---
-  // Canvasレンダラー＋広いタップ許容範囲(tolerance: 16px)で描画高速化＆スマホでのタップ精度を向上
-  const canvasRenderer = L.canvas({ padding: 0.5, tolerance: 16 });
+  // Canvasレンダラー＋広いタップ許容範囲で描画高速化＆スマホでのタップ精度を向上
+  const isTouchOrMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0 || window.innerWidth <= 768;
+  const canvasRenderer = L.canvas({
+    padding: 0.5,
+    tolerance: isTouchOrMobile ? 24 : 16
+  });
   const map = L.map('map', {
     renderer: canvasRenderer,
-    tapTolerance: 20
+    tapTolerance: 28,
+    doubleClickZoom: !isTouchOrMobile
   }).setView([35.35, 136.91], 12);
 
   const gsiPaleLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
@@ -873,6 +878,7 @@
 
   const clusterGroup = L.markerClusterGroup({
     maxClusterRadius: 45,
+    disableClusteringAtZoom: 17,
     spiderfyOnMaxZoom: true,
     showCoverageOnHover: false
   });
