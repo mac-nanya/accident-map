@@ -839,7 +839,12 @@
   let displayMode = 'cluster'; // 'cluster' | 'pins' | 'heat'
 
   // --- Map Initialization ---
-  const map = L.map('map').setView([35.35, 136.91], 12);
+  // Canvasレンダラー＋広いタップ許容範囲(tolerance: 16px)で描画高速化＆スマホでのタップ精度を向上
+  const canvasRenderer = L.canvas({ padding: 0.5, tolerance: 16 });
+  const map = L.map('map', {
+    renderer: canvasRenderer,
+    tapTolerance: 20
+  }).setView([35.35, 136.91], 12);
 
   const gsiPaleLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
     maxZoom: 18,
@@ -1224,6 +1229,7 @@
       const color = SEV_COLORS[r._severity];
       const radius = r._severity === '死亡' ? 9 : r._severity === '大破' ? 7 : r._severity === '中破' ? 6 : 5;
       const marker = L.circleMarker([r._lat, r._lon], {
+        renderer: canvasRenderer,
         radius,
         fillColor: color,
         color: '#ffffff',
@@ -1231,7 +1237,7 @@
         opacity: 0.95,
         fillOpacity: 0.85
       });
-      marker.bindPopup(buildPopupHTML(r), { maxWidth: popupMaxWidth() });
+      marker.bindPopup(() => buildPopupHTML(r), { maxWidth: popupMaxWidth() });
 
       if (displayMode === 'cluster') {
         clusterGroup.addLayer(marker);
@@ -1290,10 +1296,9 @@
         weight: isSelected ? 3 : 2,
         dashArray: isSelected ? null : '5, 4',
         fillColor: isSelected ? '#f43f5e' : '#e11d48',
-        fillOpacity: isSelected ? 0.24 : 0.10
+        fillOpacity: isSelected ? 0.24 : 0.10,
+        interactive: false
       });
-      rect.bindTooltip(`#${idx + 1} 多発地点（${h.list.length}件）クリックで内訳表示`, { sticky: true });
-      rect.on('click', () => selectHotspot(h.key));
       hotspotOverlayGroup.addLayer(rect);
 
       const rankIcon = L.divIcon({
@@ -1349,6 +1354,7 @@
     sorted.forEach(r => {
       const color = SEV_COLORS[r._severity];
       const marker = L.circleMarker([r._lat, r._lon], {
+        renderer: canvasRenderer,
         radius: 9,
         fillColor: color,
         color: '#fde047',
@@ -1356,7 +1362,7 @@
         opacity: 1,
         fillOpacity: 0.95
       });
-      marker.bindPopup(buildPopupHTML(r), { maxWidth: popupMaxWidth() });
+      marker.bindPopup(() => buildPopupHTML(r), { maxWidth: popupMaxWidth() });
       selectedHotspotGroup.addLayer(marker);
 
       const dateStr = `${r['発生日時　　年']}/${String(r['発生日時　　月']).padStart(2,'0')}/${String(r['発生日時　　日']).padStart(2,'0')} ${String(r['発生日時　　時']).padStart(2,'0')}:${String(r['発生日時　　分']).padStart(2,'0')}`;
