@@ -778,13 +778,6 @@
         </div>
         <div class="hotspot-detail" id="hotspot-detail" style="display:none;"></div>
       </div>
-
-      <div class="btn-row">
-        <label class="btn" style="text-align:center;display:block;width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--panel);cursor:pointer;font-size:12px;">
-          📂 CSVを読み込む（複数選択可）
-          <input type="file" id="reupload-input" accept=".csv" multiple style="display:none" />
-        </label>
-      </div>
     </div>
   </aside>
 
@@ -863,17 +856,12 @@
     maxZoom: 18,
     attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>'
   });
-  const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap &copy; CARTO'
-  });
 
   gsiPaleLayer.addTo(map);
   L.control.layers({
     '国土地理院（淡色・おすすめ）': gsiPaleLayer,
     '国土地理院（標準）': gsiStdLayer,
-    '国土地理院（航空写真）': gsiPhotoLayer,
-    'CartoDB Voyager': cartoLayer
+    '国土地理院（航空写真）': gsiPhotoLayer
   }).addTo(map);
 
   const clusterGroup = L.markerClusterGroup({
@@ -1503,7 +1491,6 @@
   }
 
   document.getElementById('csv-file-input').addEventListener('change', e => handleFiles(e.target.files));
-  document.getElementById('reupload-input').addEventListener('change', e => handleFiles(e.target.files));
 
   const dropZone = document.getElementById('drop-zone');
   dropZone.addEventListener('dragover', e => {
