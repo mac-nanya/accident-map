@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>交通事故マップ＆多発地点分析（江南・犬山）</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-light: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --border: #334155;
+      --accent: #38bdf8;
+      --sev-death: #ef4444;
+      --sev-major: #f97316;
+      --sev-medium: #eab308;
+      --sev-minor: #3b82f6;
+    }
+
+    * { box-sizing: border-box; }
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    #app {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* Sidebar */
+    #sidebar {
+      width: 390px;
+      min-width: 340px;
+      max-width: 440px;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 1000;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      background: #0f172a;
+    }
+    .sidebar-header h1 {
+      margin: 0 0 4px 0;
+      font-size: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sidebar-header .subtitle {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .sidebar-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .card {
+      background: rgba(15, 23, 42, 0.55);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin: 0 0 10px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Summary stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .stat-box {
+      background: var(--panel);
+      border-radius: 8px;
+      padding: 8px 4px;
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+    .stat-box .num {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .stat-box .lbl {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    /* Severity bar */
+    .sev-bar {
+      display: flex;
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #0f172a;
+      margin-top: 6px;
+    }
+    .sev-bar > div { transition: width 0.25s ease; }
+
+    /* Filters */
+    .filter-group {
+      margin-bottom: 10px;
+    }
+    .filter-group:last-child { margin-bottom: 0; }
+    .filter-label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+
+    .checkbox-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .chk-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      background: var(--panel);
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    .chk-item:hover { border-color: var(--accent); }
+    .chk-item input { margin: 0; accent-color: var(--accent); }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    .chk-count {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    select, button {
+      width: 100%;
+      padding: 7px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 12px;
+    }
+    select:focus, button:focus { outline: 1px solid var(--accent); }
+
+    .row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: var(--panel-light); }
+    .btn-primary {
+      background: #0284c7;
+      border-color: #0ea5e9;
+    }
+    .btn-primary:hover { background: #0369a1; }
+
+    /* Display mode toggles */
+    .toggle-pills {
+      display: flex;
+      gap: 6px;
+    }
+    .pill {
+      flex: 1;
+      text-align: center;
+      padding: 6px 8px;
+      font-size: 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      cursor: pointer;
+      user-select: none;
+    }
+    .pill.active {
+      background: #0284c7;
+      border-color: #38bdf8;
+      font-weight: 700;
+    }
+
+    /* Hotspot list */
+    .hotspot-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .hotspot-item {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .hotspot-item:hover {
+      border-color: var(--accent);
+      transform: translateX(2px);
+    }
+    .hotspot-item.active {
+      border-color: #fb7185;
+      background: rgba(244, 63, 94, 0.16);
+    }
+    .hotspot-detail {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .hotspot-detail-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fda4af;
+      margin-bottom: 6px;
+    }
+    .hotspot-detail-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .hotspot-acc-row {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hotspot-acc-row:hover {
+      border-color: var(--accent);
+    }
+    .hotspot-rank-marker {
+      display: inline-flex;
+      border: 1.5px solid #0f172a;
+      border-radius: 2px;
+      overflow: hidden;
+      font-size: 11px;
+      font-weight: 800;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.35);
+      white-space: nowrap;
+      line-height: 16px;
+      transform: translate(0, calc(-100% - 2px));
+    }
+    .hotspot-rank-marker .rank-no {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 2px 5px;
+    }
+    .hotspot-rank-marker .rank-cnt {
+      background: #e11d48;
+      color: #ffffff;
+      padding: 2px 5px;
+    }
+    .hotspot-rank-marker.selected {
+      border-color: #fde047;
+      transform: translate(0, calc(-100% - 2px)) scale(1.15);
+      transform-origin: left bottom;
+    }
+    .hotspot-rank-marker.selected .rank-no {
+      background: #0284c7;
+    }
+    .hotspot-rank-marker.selected .rank-cnt {
+      background: #eab308;
+      color: #0f172a;
+    }
+    .hotspot-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+    .hotspot-badge {
+      background: #ef4444;
+      color: #fff;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+    }
+    .hotspot-sub {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    /* Map container */
+    #map-wrap {
+      flex: 1;
+      position: relative;
+      height: 100%;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Drop / File Picker Overlay */
+    #file-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(4px);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #file-overlay.hidden { display: none; }
+    .drop-box {
+      max-width: 480px;
+      width: 100%;
+      background: var(--panel);
+      border: 2px dashed var(--accent);
+      border-radius: 16px;
+      padding: 32px 24px;
+      text-align: center;
+    }
+    .drop-box h2 { margin: 0 0 10px 0; font-size: 18px; }
+    .drop-box p { font-size: 13px; color: var(--muted); line-height: 1.6; margin: 0 0 18px 0; }
+    .drop-box label.file-btn {
+      display: inline-block;
+      background: #0284c7;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .drop-box label.file-btn:hover { background: #0369a1; }
+    .drop-box input[type="file"] { display: none; }
+
+    /* Legend */
+    .map-legend {
+      position: absolute;
+      bottom: 20px;
+      right: 16px;
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--text);
+      pointer-events: auto;
+    }
+    .legend-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 4px;
+    }
+    .legend-row:last-child { margin-bottom: 0; }
+
+    /* Custom Popup */
+    .leaflet-popup-content-wrapper {
+      background: #0f172a;
+      color: #f8fafc;
+      border: 1px solid #334155;
+      border-radius: 10px;
+    }
+    .leaflet-popup-tip { background: #0f172a; }
+    .popup-card {
+      font-size: 12px;
+      line-height: 1.45;
+      min-width: 260px;
+    }
+    .popup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+    }
+    .sev-tag {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 11px;
+      color: #fff;
+    }
+    .party-box {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 6px 8px;
+      margin-top: 6px;
+    }
+    .party-title {
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 11px;
+      margin-bottom: 2px;
+    }
+    .meta-line {
+      color: #cbd5e1;
+      margin-bottom: 3px;
+    }
+
+    /* Loading Overlay */
+    #loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(4px);
+      z-index: 2100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 20px;
+      text-align: center;
+    }
+    #loading-overlay.hidden { display: none; }
+    .spinner {
+      width: 42px;
+      height: 42px;
+      border: 4px solid rgba(56, 189, 248, 0.25);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.85s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .loading-sub {
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    /* Mobile Controls (hidden on desktop) */
+    #mobile-bar { display: none; }
+    #mobile-backdrop { display: none; }
+    .mobile-close-btn { display: none; }
+
+    @media (max-width: 768px) {
+      #app {
+        height: 100dvh;
+        width: 100vw;
+        position: relative;
+      }
+      #sidebar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        height: 80dvh;
+        border-right: none;
+        border-top: 1px solid var(--border);
+        border-radius: 16px 16px 0 0;
+        z-index: 1600;
+        transform: translateY(105%);
+        transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+        box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.55);
+      }
+      #sidebar.open {
+        transform: translateY(0);
+      }
+      .sidebar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+      }
+      .sidebar-header h1 { font-size: 14.5px; }
+      .mobile-close-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: auto;
+        padding: 6px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--panel-light);
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      #mobile-backdrop.open {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 1500;
+      }
+      #mobile-bar {
+        display: flex;
+        position: absolute;
+        left: 10px;
+        right: 10px;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        z-index: 1100;
+        gap: 8px;
+        align-items: center;
+        background: rgba(15, 23, 42, 0.92);
+        backdrop-filter: blur(6px);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 8px 10px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+      }
+      .mobile-count-pill {
+        font-size: 12px;
+        font-weight: 800;
+        color: var(--accent);
+        white-space: nowrap;
+        padding: 0 4px;
+      }
+      .mobile-bar-btn {
+        flex: 1;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        text-align: center;
+        white-space: nowrap;
+      }
+      .mobile-bar-btn.primary {
+        background: #0284c7;
+        border-color: #38bdf8;
+      }
+      .map-legend {
+        bottom: 72px;
+        right: 10px;
+        padding: 6px 9px;
+        font-size: 10.5px;
+      }
+      .popup-card {
+        min-width: 205px;
+        font-size: 11.5px;
+      }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div id="mobile-backdrop" onclick="closeMobilePanel()"></div>
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <div>
+        <h1>📍 交通事故マップ＆多発地点分析</h1>
+        <div class="subtitle" id="data-status">データ未読込</div>
+      </div>
+      <button class="mobile-close-btn" type="button" onclick="closeMobilePanel()">✕ 地図へ</button>
+    </div>
+
+    <div class="sidebar-body">
+      <!-- サマリー -->
+      <div class="card">
+        <div class="card-title">
+          <span>表示中の事故件数</span>
+          <span id="total-filtered" style="color:#fff;font-size:14px;">0件</span>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="num" id="cnt-death" style="color:var(--sev-death);">0</div>
+            <div class="lbl">死亡</div>
+          </div>
+          <div class="stat-box">
+            <div class="num" id="cnt-major" style="color:var(--sev-major);">0</div>
+            <div class="lbl">大破</div>
+          </div>
+          <div class="stat-box">
+            <div class="num" id="cnt-medium" style="color:var(--sev-medium);">0</div>
+            <div class="lbl">中破</div>
+          </div>
+          <div class="stat-box">
+            <div class="num" id="cnt-minor" style="color:var(--sev-minor);">0</div>
+            <div class="lbl">軽微</div>
+          </div>
+        </div>
+        <div class="sev-bar">
+          <div id="bar-death" style="background:var(--sev-death);width:0%"></div>
+          <div id="bar-major" style="background:var(--sev-major);width:0%"></div>
+          <div id="bar-medium" style="background:var(--sev-medium);width:0%"></div>
+          <div id="bar-minor" style="background:var(--sev-minor);width:0%"></div>
+        </div>
+      </div>
+
+      <!-- 表示モード -->
+      <div class="card">
+        <div class="card-title"><span>地図の表示モード</span></div>
+        <div class="toggle-pills">
+          <div class="pill active" id="mode-cluster" onclick="setDisplayMode('cluster')">クラスター＋ピン</div>
+          <div class="pill" id="mode-pins" onclick="setDisplayMode('pins')">全ピン色分け</div>
+          <div class="pill" id="mode-heat" onclick="setDisplayMode('heat')">ヒートマップ</div>
+        </div>
+      </div>
+
+      <!-- フィルタ -->
+      <div class="card">
+        <div class="card-title">
+          <span>絞り込み条件</span>
+          <button class="btn" style="width:auto;padding:2px 8px;font-size:11px;" onclick="resetFilters()">リセット</button>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">発生年</span>
+          <div class="checkbox-grid" id="filter-year-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <!-- 動的に生成 -->
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">事故の重大度（死亡・損壊程度）</span>
+          <div class="checkbox-grid">
+            <label class="chk-item">
+              <input type="checkbox" class="sev-chk" value="死亡" checked onchange="applyFilters()" />
+              <span class="dot" style="background:var(--sev-death)"></span>死亡
+            </label>
+            <label class="chk-item">
+              <input type="checkbox" class="sev-chk" value="大破" checked onchange="applyFilters()" />
+              <span class="dot" style="background:var(--sev-major)"></span>大破
+            </label>
+            <label class="chk-item">
+              <input type="checkbox" class="sev-chk" value="中破" checked onchange="applyFilters()" />
+              <span class="dot" style="background:var(--sev-medium)"></span>中破
+            </label>
+            <label class="chk-item">
+              <input type="checkbox" class="sev-chk" value="軽微" checked onchange="applyFilters()" />
+              <span class="dot" style="background:var(--sev-minor)"></span>軽微
+            </label>
+          </div>
+        </div>
+
+        <div class="filter-group row-2">
+          <div>
+            <span class="filter-label">当事者A 年齢</span>
+            <select id="filter-age-a" onchange="applyFilters()">
+              <option value="">すべて</option>
+            </select>
+          </div>
+          <div>
+            <span class="filter-label">当事者B 年齢</span>
+            <select id="filter-age-b" onchange="applyFilters()">
+              <option value="">すべて</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="filter-group row-2">
+          <div>
+            <span class="filter-label">事故類型</span>
+            <select id="filter-type" onchange="applyFilters()">
+              <option value="">すべて</option>
+              <option value="車両相互">車両相互</option>
+              <option value="人対車両">人対車両</option>
+              <option value="車両単独">車両単独</option>
+            </select>
+          </div>
+          <div>
+            <span class="filter-label">警察署</span>
+            <select id="filter-station" onchange="applyFilters()">
+              <option value="">すべて</option>
+              <option value="江南">江南</option>
+              <option value="犬山">犬山</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="filter-group row-2">
+          <div>
+            <span class="filter-label">市区町村</span>
+            <select id="filter-city" onchange="applyFilters()">
+              <option value="">すべて</option>
+            </select>
+          </div>
+          <div>
+            <span class="filter-label">時間帯（昼夜）</span>
+            <select id="filter-daynight" onchange="applyFilters()">
+              <option value="">すべて</option>
+              <option value="昼－昼">昼－昼</option>
+              <option value="薄暮">薄暮・夜明け（暮 / 明）</option>
+              <option value="夜－夜">夜－夜</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 多発地点ランキング -->
+      <div class="card" id="hotspot-card">
+        <div class="card-title">
+          <span>🔥 多発地点 TOP 15（約100m圏内）</span>
+          <label style="display:flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:var(--text);cursor:pointer;text-transform:none;letter-spacing:0;">
+            <input type="checkbox" id="toggle-hotspot-markers" checked onchange="toggleHotspotLayer()" style="accent-color:#e11d48;margin:0;" />
+            地図に表示
+          </label>
+        </div>
+        <div class="hotspot-list" id="hotspot-list">
+          <div style="font-size:12px;color:var(--muted);">データを読み込むと表示されます</div>
+        </div>
+        <div class="hotspot-detail" id="hotspot-detail" style="display:none;"></div>
+      </div>
+
+      <div class="btn-row">
+        <label class="btn" style="text-align:center;display:block;width:100%;padding:7px 10px;border-radius:6px;border:1px solid var(--border);background:var(--panel);cursor:pointer;font-size:12px;">
+          📂 CSVを読み込む（複数選択可）
+          <input type="file" id="reupload-input" accept=".csv" multiple style="display:none" />
+        </label>
+      </div>
+    </div>
+  </aside>
+
+  <main id="map-wrap">
+    <div id="map"></div>
+
+    <div class="map-legend">
+      <div class="legend-row"><span class="dot" style="background:var(--sev-death)"></span> 死亡事故</div>
+      <div class="legend-row"><span class="dot" style="background:var(--sev-major)"></span> 大破（車両）</div>
+      <div class="legend-row"><span class="dot" style="background:var(--sev-medium)"></span> 中破（車両）</div>
+      <div class="legend-row"><span class="dot" style="background:var(--sev-minor)"></span> 軽微（小破・損壊なし）</div>
+      <div class="legend-row" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);"><span style="display:inline-block;width:12px;height:12px;border:2px dashed #e11d48;background:rgba(225,29,72,0.2);border-radius:2px;flex-shrink:0;"></span> 多発地点（約100m枠）</div>
+    </div>
+
+    <div id="mobile-bar">
+      <span class="mobile-count-pill" id="mobile-count-pill">0件</span>
+      <button class="mobile-bar-btn primary" type="button" onclick="openMobilePanel(false)">🔍 絞り込み・統計</button>
+      <button class="mobile-bar-btn" type="button" onclick="openMobilePanel(true)">🔥 多発地点</button>
+    </div>
+
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <div class="loading-title">交通事故データを読み込み中...</div>
+      <div class="loading-sub" id="loading-sub">2023〜2025年分（江南・犬山管内）を取得しています</div>
+    </div>
+
+    <div id="file-overlay" class="hidden">
+      <div class="drop-box" id="drop-zone">
+        <h2>📂 デコード済みCSVを選択してください</h2>
+        <p>
+          ブラウザのセキュリティ制限によりローカルファイルを自動読み込みできない環境です。<br />
+          同じフォルダにある <strong>261_262_honhyo_2023〜2025_decoded.csv</strong> をまとめてドラッグ＆ドロップするか、下のボタンから複数選択してください。
+        </p>
+        <label class="file-btn">
+          ファイルを選択する（複数可）
+          <input type="file" id="csv-file-input" accept=".csv" multiple />
+        </label>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Leaflet & Plugins -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+<script>
+  // --- Global State ---
+  let allRecords = [];
+  let filteredRecords = [];
+  let displayMode = 'cluster'; // 'cluster' | 'pins' | 'heat'
+
+  // --- Map Initialization ---
+  const map = L.map('map').setView([35.35, 136.91], 12);
+
+  const gsiPaleLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>'
+  });
+  const gsiStdLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>'
+  });
+  const gsiPhotoLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg', {
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>'
+  });
+  const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap &copy; CARTO'
+  });
+
+  gsiPaleLayer.addTo(map);
+  L.control.layers({
+    '国土地理院（淡色・おすすめ）': gsiPaleLayer,
+    '国土地理院（標準）': gsiStdLayer,
+    '国土地理院（航空写真）': gsiPhotoLayer,
+    'CartoDB Voyager': cartoLayer
+  }).addTo(map);
+
+  const clusterGroup = L.markerClusterGroup({
+    maxClusterRadius: 45,
+    spiderfyOnMaxZoom: true,
+    showCoverageOnHover: false
+  });
+  const pinGroup = L.layerGroup();
+  const hotspotOverlayGroup = L.layerGroup().addTo(map);
+  const selectedHotspotGroup = L.layerGroup().addTo(map);
+  let heatLayer = null;
+  let selectedHotspotKey = null;
+  let currentHotspots = [];
+
+  // --- Coordinate Parser (Decimal or DMS) ---
+  // 小数点表記 (例: "35.326254") と DMS連結表記 (例: "351934515") の両方に対応
+  function parseCoord(raw, isLon) {
+    const s = String(raw || '').trim();
+    if (!s || isNaN(Number(s))) return null;
+    if (s.includes('.')) {
+      const val = parseFloat(s);
+      return isNaN(val) ? null : val;
+    }
+    const degLen = isLon ? 3 : 2;
+    if (s.length < degLen + 5) return null;
+    const deg = parseInt(s.slice(0, degLen), 10);
+    const min = parseInt(s.slice(degLen, degLen + 2), 10);
+    const sec = parseInt(s.slice(degLen + 2), 10) / 1000;
+    return deg + min / 60 + sec / 3600;
+  }
+
+  // --- Severity Classifier ---
+  function classifySeverity(row) {
+    const content = row['事故内容'] || '';
+    const deaths = parseInt(row['死者数'] || '0', 10);
+    const dmgA = row['車両の損壊程度（当事者A）'] || '';
+    const dmgB = row['車両の損壊程度（当事者B）'] || '';
+
+    if (content === '死亡' || deaths > 0) return '死亡';
+    if (dmgA === '大破' || dmgB === '大破') return '大破';
+    if (dmgA === '中破' || dmgB === '中破') return '中破';
+    return '軽微';
+  }
+
+  const SEV_COLORS = {
+    '死亡': '#ef4444',
+    '大破': '#f97316',
+    '中破': '#eab308',
+    '軽微': '#3b82f6'
+  };
+
+  // --- Simple RFC4180 CSV Parser ---
+  function parseCSV(text) {
+    const rows = [];
+    let cur = '';
+    let row = [];
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const next = text[i + 1];
+      if (inQuotes) {
+        if (ch === '"' && next === '"') {
+          cur += '"';
+          i++;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          cur += ch;
+        }
+      } else {
+        if (ch === '"') {
+          inQuotes = true;
+        } else if (ch === ',') {
+          row.push(cur);
+          cur = '';
+        } else if (ch === '\r' && next === '\n') {
+          row.push(cur);
+          rows.push(row);
+          row = [];
+          cur = '';
+          i++;
+        } else if (ch === '\n' || ch === '\r') {
+          row.push(cur);
+          rows.push(row);
+          row = [];
+          cur = '';
+        } else {
+          cur += ch;
+        }
+      }
+    }
+    if (cur.length > 0 || row.length > 0) {
+      row.push(cur);
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  function parseCSVText(text) {
+    const matrix = parseCSV(text.replace(/^\uFEFF/, ''));
+    if (matrix.length < 2) return [];
+    const headers = matrix[0].map(h => h.trim());
+    const parsed = [];
+
+    for (let i = 1; i < matrix.length; i++) {
+      const cols = matrix[i];
+      if (cols.length < headers.length - 2) continue;
+      const obj = {};
+      for (let j = 0; j < headers.length; j++) {
+        obj[headers[j]] = (cols[j] || '').trim();
+      }
+      const lat = parseCoord(obj['地点　緯度（北緯）'], false);
+      const lon = parseCoord(obj['地点　経度（東経）'], true);
+      if (lat === null || lon === null) continue;
+
+      obj._lat = lat;
+      obj._lon = lon;
+      obj._year = String(obj['発生日時　　年'] || '').trim();
+      if (obj._year === '2022') continue;
+      obj._severity = classifySeverity(obj);
+      parsed.push(obj);
+    }
+    return parsed;
+  }
+
+  function isMobileView() {
+    return window.innerWidth <= 768;
+  }
+
+  function popupMaxWidth() {
+    return Math.min(340, window.innerWidth - 44);
+  }
+
+  function openMobilePanel(focusHotspots) {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('mobile-backdrop').classList.add('open');
+    if (focusHotspots) {
+      setTimeout(() => {
+        document.getElementById('hotspot-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
+    }
+  }
+
+  function closeMobilePanel() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('mobile-backdrop').classList.remove('open');
+  }
+
+  window.addEventListener('resize', () => map.invalidateSize());
+
+  function loadMultipleCSVTexts(texts) {
+    const combined = [];
+    texts.forEach(t => {
+      combined.push(...parseCSVText(t));
+    });
+
+    if (combined.length === 0) {
+      document.getElementById('loading-overlay').classList.add('hidden');
+      document.getElementById('file-overlay').classList.remove('hidden');
+      alert('CSVデータが正しく読み込めませんでした。');
+      return;
+    }
+
+    allRecords = combined;
+    const years = Array.from(new Set(allRecords.map(r => r._year).filter(Boolean))).sort();
+    const yearLabel = years.length > 0 ? years.join('・') + '年' : '';
+
+    document.getElementById('loading-overlay').classList.add('hidden');
+    document.getElementById('file-overlay').classList.add('hidden');
+    document.getElementById('data-status').textContent =
+      `読込完了: 全 ${allRecords.length.toLocaleString()} 件（${yearLabel} / 江南・犬山）`;
+
+    populateDropdowns();
+    applyFilters();
+
+    if (allRecords.length > 0) {
+      const bounds = L.latLngBounds(allRecords.map(r => [r._lat, r._lon]));
+      map.fitBounds(bounds, { padding: [30, 30] });
+    }
+  }
+
+  function populateDropdowns() {
+    const yearGrid = document.getElementById('filter-year-grid');
+    const years = Array.from(new Set(allRecords.map(r => r._year).filter(Boolean))).sort();
+    yearGrid.innerHTML = '';
+    years.forEach(y => {
+      const cnt = allRecords.filter(r => r._year === y).length;
+      const label = document.createElement('label');
+      label.className = 'chk-item';
+      label.innerHTML = `
+        <input type="checkbox" class="year-chk" value="${y}" checked onchange="applyFilters()" />
+        <span>${y}年</span>
+        <span class="chk-count">${cnt}</span>
+      `;
+      yearGrid.appendChild(label);
+    });
+
+    const order = ['0～24歳', '25～34歳', '35～44歳', '45～54歳', '55～64歳', '65～74歳', '75歳以上', '不明', '対象外当事者'];
+    const fillAge = (id, key) => {
+      const sel = document.getElementById(id);
+      const vals = new Set(allRecords.map(r => r[key]).filter(Boolean));
+      sel.innerHTML = '<option value="">すべて</option>';
+      order.forEach(age => {
+        if (vals.has(age)) {
+          const opt = document.createElement('option');
+          opt.value = age;
+          opt.textContent = age;
+          sel.appendChild(opt);
+        }
+      });
+    };
+    fillAge('filter-age-a', '年齢（当事者A）');
+    fillAge('filter-age-b', '年齢（当事者B）');
+
+    const citySel = document.getElementById('filter-city');
+    const cities = Array.from(new Set(allRecords.map(r => r['市区町村コード']).filter(Boolean))).sort();
+    citySel.innerHTML = '<option value="">すべて</option>';
+    cities.forEach(city => {
+      const opt = document.createElement('option');
+      opt.value = city;
+      opt.textContent = city;
+      citySel.appendChild(opt);
+    });
+  }
+
+  function resetFilters() {
+    document.querySelectorAll('.year-chk').forEach(c => c.checked = true);
+    document.querySelectorAll('.sev-chk').forEach(c => c.checked = true);
+    document.getElementById('filter-age-a').value = '';
+    document.getElementById('filter-age-b').value = '';
+    document.getElementById('filter-type').value = '';
+    document.getElementById('filter-station').value = '';
+    document.getElementById('filter-city').value = '';
+    document.getElementById('filter-daynight').value = '';
+    applyFilters();
+  }
+
+  function applyFilters() {
+    const allowedYears = new Set(
+      Array.from(document.querySelectorAll('.year-chk:checked')).map(c => c.value)
+    );
+    const allowedSev = new Set(
+      Array.from(document.querySelectorAll('.sev-chk:checked')).map(c => c.value)
+    );
+    const ageA = document.getElementById('filter-age-a').value;
+    const ageB = document.getElementById('filter-age-b').value;
+    const accType = document.getElementById('filter-type').value;
+    const station = document.getElementById('filter-station').value;
+    const city = document.getElementById('filter-city').value;
+    const dayNight = document.getElementById('filter-daynight').value;
+
+    filteredRecords = allRecords.filter(r => {
+      if (allowedYears.size > 0 && !allowedYears.has(r._year)) return false;
+      if (allowedYears.size === 0) return false;
+      if (!allowedSev.has(r._severity)) return false;
+      if (ageA && r['年齢（当事者A）'] !== ageA) return false;
+      if (ageB && r['年齢（当事者B）'] !== ageB) return false;
+      if (accType && r['事故類型'] !== accType) return false;
+      if (station && r['警察署等コード'] !== station) return false;
+      if (city && r['市区町村コード'] !== city) return false;
+      if (dayNight) {
+        const dn = r['昼夜'] || '';
+        if (dayNight === '薄暮') {
+          if (!dn.includes('暮') && !dn.includes('明')) return false;
+        } else if (dn !== dayNight) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    updateSummary();
+    renderMapLayers();
+    renderHotspots();
+  }
+
+  function updateSummary() {
+    const counts = { '死亡': 0, '大破': 0, '中破': 0, '軽微': 0 };
+    filteredRecords.forEach(r => counts[r._severity]++);
+    const total = filteredRecords.length;
+
+    document.getElementById('total-filtered').textContent = `${total}件`;
+    document.getElementById('mobile-count-pill').textContent = `${total.toLocaleString()}件`;
+    document.getElementById('cnt-death').textContent = counts['死亡'];
+    document.getElementById('cnt-major').textContent = counts['大破'];
+    document.getElementById('cnt-medium').textContent = counts['中破'];
+    document.getElementById('cnt-minor').textContent = counts['軽微'];
+
+    const pct = n => total > 0 ? (n / total * 100).toFixed(1) + '%' : '0%';
+    document.getElementById('bar-death').style.width = pct(counts['死亡']);
+    document.getElementById('bar-major').style.width = pct(counts['大破']);
+    document.getElementById('bar-medium').style.width = pct(counts['中破']);
+    document.getElementById('bar-minor').style.width = pct(counts['軽微']);
+  }
+
+  function setDisplayMode(mode) {
+    displayMode = mode;
+    document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+    document.getElementById('mode-' + mode).classList.add('active');
+    renderMapLayers();
+  }
+
+  function buildPopupHTML(r) {
+    const color = SEV_COLORS[r._severity];
+    const dateStr = `${r['発生日時　　年']}/${r['発生日時　　月']}/${r['発生日時　　日']}(${r['曜日(発生年月日)']}) ${r['発生日時　　時']}:${String(r['発生日時　　分']).padStart(2, '0')}`;
+    const road = (r['路線コード'] || '').replace('－現道区間又は包括路線', '');
+    const stopA = r['一時停止規制　標識（当事者A）'] !== '対象外当事者' ? ` / A一時停止:${r['一時停止規制　標識（当事者A）']}` : '';
+
+    return `
+      <div class="popup-card">
+        <div class="popup-header">
+          <span class="sev-tag" style="background:${color}">${r._severity}（${r['事故類型']}）</span>
+          <span style="color:#94a3b8;font-size:11px;">${r['警察署等コード']}署 #${r['本票番号']}</span>
+        </div>
+        <div class="meta-line"><strong>日時：</strong>${dateStr}（${r['昼夜']}・${r['天候']}・${r['路面状態']}）</div>
+        <div class="meta-line"><strong>場所：</strong>${r['市区町村コード']} ${road} / ${r['道路形状']}（信号:${r['信号機']}${stopA}）</div>
+        <div class="meta-line"><strong>被害：</strong>死者 ${r['死者数']}名 / 負傷者 ${r['負傷者数']}名</div>
+
+        <div class="party-box">
+          <div class="party-title">当事者A（第一当事者）</div>
+          <div>年齢: <strong>${r['年齢（当事者A）']}</strong> ｜ ${r['当事者種別（当事者A）']}</div>
+          <div>損壊: <strong>${r['車両の損壊程度（当事者A）']}</strong> ｜ 人身: ${r['人身損傷程度（当事者A）']}</div>
+        </div>
+
+        <div class="party-box">
+          <div class="party-title">当事者B（相手方）</div>
+          <div>年齢: <strong>${r['年齢（当事者B）']}</strong> ｜ ${r['当事者種別（当事者B）']}</div>
+          <div>損壊: <strong>${r['車両の損壊程度（当事者B）']}</strong> ｜ 人身: ${r['人身損傷程度（当事者B）']}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderMapLayers() {
+    map.removeLayer(clusterGroup);
+    map.removeLayer(pinGroup);
+    if (heatLayer) map.removeLayer(heatLayer);
+
+    clusterGroup.clearLayers();
+    pinGroup.clearLayers();
+
+    if (displayMode === 'heat') {
+      const heatPoints = filteredRecords.map(r => {
+        const weight = r._severity === '死亡' ? 1.0 : r._severity === '大破' ? 0.85 : r._severity === '中破' ? 0.65 : 0.45;
+        return [r._lat, r._lon, weight];
+      });
+      heatLayer = L.heatLayer(heatPoints, {
+        radius: 24,
+        blur: 18,
+        maxZoom: 16,
+        gradient: { 0.2: '#3b82f6', 0.5: '#eab308', 0.8: '#f97316', 1.0: '#ef4444' }
+      }).addTo(map);
+      return;
+    }
+
+    filteredRecords.forEach(r => {
+      const color = SEV_COLORS[r._severity];
+      const radius = r._severity === '死亡' ? 9 : r._severity === '大破' ? 7 : r._severity === '中破' ? 6 : 5;
+      const marker = L.circleMarker([r._lat, r._lon], {
+        radius,
+        fillColor: color,
+        color: '#ffffff',
+        weight: r._severity === '死亡' ? 2 : 1,
+        opacity: 0.95,
+        fillOpacity: 0.85
+      });
+      marker.bindPopup(buildPopupHTML(r), { maxWidth: popupMaxWidth() });
+
+      if (displayMode === 'cluster') {
+        clusterGroup.addLayer(marker);
+      } else {
+        pinGroup.addLayer(marker);
+      }
+    });
+
+    if (displayMode === 'cluster') {
+      map.addLayer(clusterGroup);
+    } else {
+      map.addLayer(pinGroup);
+    }
+  }
+
+  // --- Hotspot Grid Clustering (~100m cell) ---
+  function toggleHotspotLayer() {
+    if (document.getElementById('toggle-hotspot-markers').checked) {
+      map.addLayer(hotspotOverlayGroup);
+    } else {
+      map.removeLayer(hotspotOverlayGroup);
+    }
+  }
+
+  function clearHotspotSelection() {
+    selectedHotspotKey = null;
+    renderHotspotSelectionUI();
+  }
+
+  function selectHotspot(key) {
+    selectedHotspotKey = (selectedHotspotKey === key) ? null : key;
+    const target = currentHotspots.find(h => h.key === selectedHotspotKey);
+    if (target) {
+      if (displayMode === 'heat') setDisplayMode('cluster');
+      map.setView([target.avgLat, target.avgLon], Math.max(map.getZoom(), 17), { animate: true });
+    }
+    renderHotspotSelectionUI();
+  }
+
+  function renderHotspotSelectionUI() {
+    document.querySelectorAll('.hotspot-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.key === selectedHotspotKey);
+    });
+    renderHotspotMapOverlays();
+    renderSelectedHotspotDetail();
+  }
+
+  function renderHotspotMapOverlays() {
+    hotspotOverlayGroup.clearLayers();
+    if (!document.getElementById('toggle-hotspot-markers').checked) return;
+
+    currentHotspots.forEach((h, idx) => {
+      const isSelected = h.key === selectedHotspotKey;
+      const rect = L.rectangle(h.bounds, {
+        color: isSelected ? '#fde047' : '#e11d48',
+        weight: isSelected ? 3 : 2,
+        dashArray: isSelected ? null : '5, 4',
+        fillColor: isSelected ? '#f43f5e' : '#e11d48',
+        fillOpacity: isSelected ? 0.24 : 0.10
+      });
+      rect.bindTooltip(`#${idx + 1} 多発地点（${h.list.length}件）クリックで内訳表示`, { sticky: true });
+      rect.on('click', () => selectHotspot(h.key));
+      hotspotOverlayGroup.addLayer(rect);
+
+      const rankIcon = L.divIcon({
+        className: '',
+        html: `<div class="hotspot-rank-marker${isSelected ? ' selected' : ''}"><span class="rank-no">#${idx + 1}</span><span class="rank-cnt">(${h.list.length})</span></div>`,
+        iconSize: null,
+        iconAnchor: [0, 0]
+      });
+      // 100m×100m枠の左上角（北西端）に配置して内部の事故ピンと重ならないようにする
+      const topLeftLatLng = [h.bounds[1][0], h.bounds[0][1]];
+      const rankMarker = L.marker(topLeftLatLng, {
+        icon: rankIcon,
+        zIndexOffset: isSelected ? 1000 : 500
+      });
+      rankMarker.on('click', () => selectHotspot(h.key));
+      hotspotOverlayGroup.addLayer(rankMarker);
+    });
+  }
+
+  function renderSelectedHotspotDetail() {
+    selectedHotspotGroup.clearLayers();
+    const detailEl = document.getElementById('hotspot-detail');
+    if (!selectedHotspotKey) {
+      detailEl.style.display = 'none';
+      detailEl.innerHTML = '';
+      return;
+    }
+
+    const idx = currentHotspots.findIndex(h => h.key === selectedHotspotKey);
+    if (idx === -1) {
+      detailEl.style.display = 'none';
+      detailEl.innerHTML = '';
+      return;
+    }
+
+    const h = currentHotspots[idx];
+    const sorted = [...h.list].sort((a, b) => {
+      const da = `${a['発生日時　　年']}${String(a['発生日時　　月']).padStart(2,'0')}${String(a['発生日時　　日']).padStart(2,'0')}${String(a['発生日時　　時']).padStart(2,'0')}`;
+      const db = `${b['発生日時　　年']}${String(b['発生日時　　月']).padStart(2,'0')}${String(b['発生日時　　日']).padStart(2,'0')}${String(b['発生日時　　時']).padStart(2,'0')}`;
+      return db.localeCompare(da);
+    });
+
+    detailEl.style.display = 'block';
+    detailEl.innerHTML = `
+      <div class="hotspot-detail-header">
+        <span>📌 #${idx + 1} に含まれる事故（${sorted.length}件）</span>
+        <button class="btn" style="width:auto;padding:2px 7px;font-size:11px;" onclick="clearHotspotSelection()">✕ 解除</button>
+      </div>
+      <div class="hotspot-detail-list" id="hotspot-detail-list"></div>
+    `;
+    const listEl = document.getElementById('hotspot-detail-list');
+
+    sorted.forEach(r => {
+      const color = SEV_COLORS[r._severity];
+      const marker = L.circleMarker([r._lat, r._lon], {
+        radius: 9,
+        fillColor: color,
+        color: '#fde047',
+        weight: 3,
+        opacity: 1,
+        fillOpacity: 0.95
+      });
+      marker.bindPopup(buildPopupHTML(r), { maxWidth: popupMaxWidth() });
+      selectedHotspotGroup.addLayer(marker);
+
+      const dateStr = `${r['発生日時　　年']}/${String(r['発生日時　　月']).padStart(2,'0')}/${String(r['発生日時　　日']).padStart(2,'0')} ${String(r['発生日時　　時']).padStart(2,'0')}:${String(r['発生日時　　分']).padStart(2,'0')}`;
+      const row = document.createElement('div');
+      row.className = 'hotspot-acc-row';
+      row.innerHTML = `
+        <span class="dot" style="background:${color}"></span>
+        <span style="font-weight:700;white-space:nowrap;">${dateStr}</span>
+        <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r._severity}・${r['事故類型']}（${r['当事者種別（当事者A）']}×${r['当事者種別（当事者B）']}）</span>
+      `;
+      row.onclick = () => {
+        if (isMobileView()) closeMobilePanel();
+        map.setView([r._lat, r._lon], 18, { animate: true });
+        marker.openPopup();
+      };
+      listEl.appendChild(row);
+    });
+  }
+
+  function renderHotspots() {
+    const container = document.getElementById('hotspot-list');
+    if (filteredRecords.length === 0) {
+      currentHotspots = [];
+      selectedHotspotKey = null;
+      hotspotOverlayGroup.clearLayers();
+      selectedHotspotGroup.clearLayers();
+      document.getElementById('hotspot-detail').style.display = 'none';
+      container.innerHTML = '<div style="font-size:12px;color:var(--muted);">該当する事故データがありません</div>';
+      return;
+    }
+
+    // 緯度0.0009度 ≈ 100m、経度0.0011度 ≈ 100m
+    const cellLat = 0.0009;
+    const cellLon = 0.0011;
+    const grid = new Map();
+
+    filteredRecords.forEach(r => {
+      const gx = Math.floor(r._lat / cellLat);
+      const gy = Math.floor(r._lon / cellLon);
+      const key = `${gx}_${gy}`;
+      if (!grid.has(key)) {
+        grid.set(key, {
+          key,
+          gx,
+          gy,
+          bounds: [[gx * cellLat, gy * cellLon], [(gx + 1) * cellLat, (gy + 1) * cellLon]],
+          list: []
+        });
+      }
+      grid.get(key).list.push(r);
+    });
+
+    currentHotspots = Array.from(grid.values())
+      .filter(h => h.list.length >= 2)
+      .sort((a, b) => b.list.length - a.list.length)
+      .slice(0, 15);
+
+    if (currentHotspots.length === 0) {
+      selectedHotspotKey = null;
+      hotspotOverlayGroup.clearLayers();
+      selectedHotspotGroup.clearLayers();
+      document.getElementById('hotspot-detail').style.display = 'none';
+      container.innerHTML = '<div style="font-size:12px;color:var(--muted);">2件以上集中している地点はありません</div>';
+      return;
+    }
+
+    if (selectedHotspotKey && !currentHotspots.some(h => h.key === selectedHotspotKey)) {
+      selectedHotspotKey = null;
+    }
+
+    container.innerHTML = '';
+    currentHotspots.forEach((h, idx) => {
+      const list = h.list;
+      h.avgLat = list.reduce((s, r) => s + r._lat, 0) / list.length;
+      h.avgLon = list.reduce((s, r) => s + r._lon, 0) / list.length;
+
+      // 代表的な路線・場所・重大度内訳
+      const sevSummary = ['死亡', '大破', '中破', '軽微']
+        .map(s => {
+          const c = list.filter(r => r._severity === s).length;
+          return c > 0 ? `${s}${c}` : null;
+        })
+        .filter(Boolean)
+        .join(' / ');
+
+      const sample = list[0];
+      const roadName = (sample['路線コード'] || '').replace('－現道区間又は包括路線', '');
+      const shape = sample['道路形状'] || '';
+
+      const yearsInCluster = Array.from(new Set(list.map(r => r._year).filter(Boolean))).sort();
+      const yearSummary = yearsInCluster.length > 0
+        ? yearsInCluster.map(y => `${y}:${list.filter(r => r._year === y).length}`).join(' / ')
+        : '';
+
+      const item = document.createElement('div');
+      item.className = 'hotspot-item' + (h.key === selectedHotspotKey ? ' active' : '');
+      item.dataset.key = h.key;
+      item.innerHTML = `
+        <div class="hotspot-top">
+          <span>#${idx + 1} ${sample['市区町村コード'] || sample['警察署等コード'] + '管内'}（${shape}）</span>
+          <span class="hotspot-badge">${list.length}件</span>
+        </div>
+        <div class="hotspot-sub">
+          ${roadName}<br/>
+          内訳: ${sevSummary}${yearSummary ? `<br/>年別: ${yearSummary}` : ''}
+        </div>
+      `;
+      item.onclick = () => selectHotspot(h.key);
+      container.appendChild(item);
+    });
+
+    renderHotspotMapOverlays();
+    renderSelectedHotspotDetail();
+  }
+
+  // --- File Upload & Drag-and-Drop Handlers ---
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(file, 'UTF-8');
+    });
+  }
+
+  function handleFiles(fileList) {
+    const files = Array.from(fileList || []).filter(f => f.name.toLowerCase().endsWith('.csv'));
+    if (files.length === 0) return;
+    Promise.all(files.map(readFileAsText))
+      .then(texts => loadMultipleCSVTexts(texts))
+      .catch(() => alert('CSVファイルの読み込みに失敗しました。'));
+  }
+
+  document.getElementById('csv-file-input').addEventListener('change', e => handleFiles(e.target.files));
+  document.getElementById('reupload-input').addEventListener('change', e => handleFiles(e.target.files));
+
+  const dropZone = document.getElementById('drop-zone');
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.style.background = '#1e293b';
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.style.background = '';
+  });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.background = '';
+    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+  });
+
+  // --- Auto-fetch if served over HTTP ---
+  const AUTO_CSV_FILES = [
+    './261_262_honhyo_2023_decoded.csv',
+    './261_262_honhyo_2024_decoded.csv',
+    './261_262_honhyo_2025_decoded.csv'
+  ];
+
+  if (location.protocol === 'file:') {
+    document.getElementById('loading-overlay').classList.add('hidden');
+    document.getElementById('file-overlay').classList.remove('hidden');
+  } else {
+    let loadedCount = 0;
+    const subEl = document.getElementById('loading-sub');
+    Promise.allSettled(
+      AUTO_CSV_FILES.map(url =>
+        fetch(url).then(res => {
+          if (!res.ok) throw new Error('fetch failed');
+          return res.text();
+        }).then(txt => {
+          loadedCount++;
+          if (subEl) subEl.textContent = `CSVデータを取得中... (${loadedCount} / ${AUTO_CSV_FILES.length})`;
+          return txt;
+        })
+      )
+    ).then(results => {
+      const texts = results
+        .filter(r => r.status === 'fulfilled')
+        .map(r => r.value);
+      if (texts.length > 0) {
+        loadMultipleCSVTexts(texts);
+      } else {
+        document.getElementById('loading-overlay').classList.add('hidden');
+        document.getElementById('file-overlay').classList.remove('hidden');
+      }
+    });
+  }
+</script>
+</body>
+</html>
